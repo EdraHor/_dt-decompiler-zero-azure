@@ -2,7 +2,7 @@
 """
 Trails from Zero Quest DT Decompiler
 Converts ._dt files to JSON format for easier translation work
-Based on the Ivdos structure from the HTML viewer/editor
+Based on the structure of the @Ivdos program
 """
 
 import struct
@@ -17,20 +17,170 @@ class QuestDTDecompiler:
     ENTRY_SIZE = 28  # 1(counter) + 11(reserved) + 4 + 4 + 4 + 4
     ENCODING = 'shift_jis'
     
+    # Словарь замен для символов, несовместимых с SJIS
+    INCOMPATIBLE_CHARS_REPLACEMENTS = {
+        '\u00AD': '',       # Soft Hyphen (SHY) -> удаляем
+        '\u2011': '-',      # - -> обычный дефис
+        '\u2014': '-',      # Em dash (—) -> обычный дефис
+        '\u2013': '-',      # En dash (–) -> обычный дефис
+        '\u2015': '-',      # Horizontal bar (―) -> обычный дефис
+        '\u2018': "'",      # Left single quote (') -> обычный апостроф
+        '\u2019': "'",      # Right single quote (') -> обычный апостроф
+        '\u201C': '"',      # Left double quote (") -> обычные кавычки
+        '\u201D': '"',      # Right double quote (") -> обычные кавычки
+        '\u2026': '...',    # Ellipsis (…) -> три точки
+        '\u2022': '*',      # Bullet (•) -> звездочка
+        '\u2032': "'",      # Prime (′) -> апостроф
+        '\u2033': '"',      # Double prime (″) -> кавычки
+        '\u00A0': ' ',      # Non-breaking space -> обычный пробел
+        '\u00AB': '"',      # Left-pointing double angle quotation mark («) -> кавычки
+        '\u00BB': '"',      # Right-pointing double angle quotation mark (») -> кавычки
+        '\u00A9': '(c)',    # Copyright symbol (©) -> (c)
+        '\u00AE': '(r)',    # Registered trademark (®) -> (r)
+        '\u2122': '(tm)',   # Trademark symbol (™) -> (tm)
+        '\u20AC': 'EUR',    # Euro symbol (€) -> EUR
+        '\u00A3': 'GBP',    # Pound symbol (£) -> GBP
+        '\u00A5': 'JPY',    # Yen symbol (¥) -> JPY
+        '\u2212': '-',      # Minus sign (−) -> обычный дефис
+        '\u0306': '',       # Combining breve (̆) -> удаляем
+        '\u0308': '',       # Combining diaeresis (̈) -> удаляем
+        '\u0301': '',       # Combining acute accent (́) -> удаляем
+        '\u0300': '',       # Combining grave accent (̀) -> удаляем
+        '\u0302': '',       # Combining circumflex accent (̂) -> удаляем
+        '\u0303': '',       # Combining tilde (̃) -> удаляем
+        '\u0304': '',       # Combining macron (̄) -> удаляем
+        '\u0307': '',       # Combining dot above (̇) -> удаляем
+        '\u030A': '',       # Combining ring above (̊) -> удаляем
+        '\u030B': '',       # Combining double acute accent (̋) -> удаляем
+        '\u030C': '',       # Combining caron (̌) -> удаляем
+        '\u0327': '',       # Combining cedilla (̧) -> удаляем
+        '\u0328': '',       # Combining ogonek (̨) -> удаляем
+        '\u0323': '',       # Combining dot below (̣) -> удаляем
+        '\u2116': '#',      # № -> #
+        '\u04af': 'у',      # ү -> у (это кириллическая у)
+        '\u200C': '',       # Zero Width Non-Joiner (ZWNJ) -> удаляем
+        '\u200D': '',       # Zero Width Joiner (ZWJ) -> удаляем
+        '\uFEFF': '',       # Zero Width No-Break Space (BOM) -> удаляем
+        '\u2215': '/',      # Division Slash (∕) -> обычный слэш
+        '\u2044': '/',      # Fraction Slash (⁄) -> обычный слэш
+        '\u00B7': '.',      # Middle Dot (·) -> точка
+        '\u02D9': '.',      # Dot Above (˙) -> точка
+        '\u201A': ',',      # Single Low-9 Quotation Mark (‚) -> запятая
+        '\u201E': '"',      # Double Low-9 Quotation Mark („) -> кавычки
+        '\u2039': '<',      # Single Left-Pointing Angle Quotation Mark (‹) -> <
+        '\u203A': '>',      # Single Right-Pointing Angle Quotation Mark (›) -> >
+        '\u00B0': '°',      # Degree Sign (°) -> градус
+        '\u00F7': '/',      # Division Sign (÷) -> слэш
+        '\u00D7': 'x',      # Multiplication Sign (×) -> латинская x
+        '\u03BC': 'μ',      # Micro Sign (µ) -> греческая μ
+    }
+
     def __init__(self):
         self.entries = []
         self.file_size = 0
-    
+
+    def get_replacement_for_extended_char(self, c):
+        """Получение замены для расширенных символов"""
+        char_code = ord(c)
+
+        # Проверка для кириллических символов с диакритическими знаками
+        if c == '\u04AF' or c == '\u04af':
+            return 'у'  # ү -> у
+
+        # Кириллические символы
+        if c == '\u0401': return 'Е'  # Ё -> Е
+        if c == '\u0451': return 'е'  # ё -> е
+
+        # Расширенные кириллические символы
+        if c == '\u0406': return 'И'  # І -> И
+        if c == '\u0456': return 'и'  # і -> и
+        if c == '\u0407': return 'И'  # Ї -> И
+        if c == '\u0457': return 'и'  # ї -> и
+        if c == '\u0404': return 'Э'  # Є -> Э
+        if c == '\u0454': return 'э'  # є -> э
+        if c == '\u0490': return 'Г'  # Ґ -> Г
+        if c == '\u0491': return 'г'  # ґ -> г
+
+        # Белорусские символы
+        if c == '\u040E': return 'У'  # Ў -> У
+        if c == '\u045E': return 'у'  # ў -> у
+
+        # Другие кириллические
+        if c == '\u04D8': return 'Е'  # Ә -> Е
+        if c == '\u04D9': return 'е'  # ә -> е
+        if c == '\u04A2': return 'Н'  # Ң -> Н
+        if c == '\u04A3': return 'н'  # ң -> н
+        if c == '\u0492': return 'Г'  # Ғ -> Г
+        if c == '\u0493': return 'г'  # ғ -> г
+        if c == '\u04B0': return 'У'  # Ұ -> У
+        if c == '\u04B1': return 'у'  # ұ -> у
+        if c == '\u04AE': return 'У'  # Ү -> У
+        if c == '\u049A': return 'К'  # Қ -> К
+        if c == '\u049B': return 'к'  # қ -> к
+        if c == '\u04E8': return 'О'  # Ө -> О
+        if c == '\u04E9': return 'о'  # ө -> о
+        if c == '\u04BA': return 'Х'  # Һ -> Х
+        if c == '\u04BB': return 'х'  # һ -> х
+
+        # Латинские символы с диакритикой
+        if 0x00C0 <= char_code <= 0x00C5: return 'A'  # À-Å -> A
+        if 0x00E0 <= char_code <= 0x00E5: return 'a'  # à-å -> a
+        if c == '\u00C6': return 'AE'  # Æ -> AE
+        if c == '\u00E6': return 'ae'  # æ -> ae
+        if c == '\u00C7': return 'C'   # Ç -> C
+        if c == '\u00E7': return 'c'   # ç -> c
+        if 0x00C8 <= char_code <= 0x00CB: return 'E'  # È-Ë -> E
+        if 0x00E8 <= char_code <= 0x00EB: return 'e'  # è-ë -> e
+        if 0x00CC <= char_code <= 0x00CF: return 'I'  # Ì-Ï -> I
+        if 0x00EC <= char_code <= 0x00EF: return 'i'  # ì-ï -> i
+        if c == '\u00D0': return 'D'   # Ð -> D
+        if c == '\u00F0': return 'd'   # ð -> d
+        if c == '\u00D1': return 'N'   # Ñ -> N
+        if c == '\u00F1': return 'n'   # ñ -> n
+        if (0x00D2 <= char_code <= 0x00D6) or c == '\u00D8': return 'O'  # Ò-Ö, Ø -> O
+        if (0x00F2 <= char_code <= 0x00F6) or c == '\u00F8': return 'o'  # ò-ö, ø -> o
+        if 0x00D9 <= char_code <= 0x00DC: return 'U'  # Ù-Ü -> U
+        if 0x00F9 <= char_code <= 0x00FC: return 'u'  # ù-ü -> u
+        if c == '\u00DD': return 'Y'   # Ý -> Y
+        if c == '\u00FD': return 'y'   # ý -> y
+        if c == '\u00DE': return 'Th'  # Þ -> Th
+        if c == '\u00FE': return 'th'  # þ -> th
+        if c == '\u00DF': return 'ss'  # ß -> ss
+
+        # Если не нашли замену, возвращаем None
+        return None
+
+    def replace_incompatible_chars(self, text):
+        """Замена несовместимых с SJIS символов на поддерживаемые аналоги"""
+        if not text:
+            return text
+
+        result = []
+        for char in text:
+            # Сначала проверяем основной словарь
+            if char in self.INCOMPATIBLE_CHARS_REPLACEMENTS:
+                replacement = self.INCOMPATIBLE_CHARS_REPLACEMENTS[char]
+                result.append(replacement)
+            else:
+                # Затем проверяем расширенные символы
+                replacement = self.get_replacement_for_extended_char(char)
+                if replacement is not None:
+                    result.append(replacement)
+                else:
+                    result.append(char)
+
+        return ''.join(result)
+
     def read_cstring_sjis(self, data, ptr):
         """Read null-terminated SJIS string at given pointer"""
         if not ptr or ptr < 0 or ptr >= len(data):
             return ""
-        
+
         # Find null terminator
         end = ptr
         while end < len(data) and data[end] != 0:
             end += 1
-        
+
         # Decode SJIS string
         try:
             text = data[ptr:end].decode(self.ENCODING, errors='replace')
@@ -168,10 +318,25 @@ class QuestDTDecompiler:
         """Encode string to SJIS with null terminator"""
         if not text:
             return b'\x00'
+
         try:
+            # Замена <LINE> обратно на управляющий символ
             text = text.replace('<LINE>', '\u0001')
+
+            # ВАЖНО: Замена несовместимых символов перед кодированием в SJIS
+            text = self.replace_incompatible_chars(text)
+
+            # Кодирование в SJIS
             encoded = text.encode(self.ENCODING, errors='replace')
+
+            # Проверка на наличие знаков вопроса (могут появиться при неудачной замене)
+            decoded_check = encoded.decode(self.ENCODING, errors='replace')
+            if '?' in decoded_check and '?' not in text:
+                print(f"Warning: Some characters may not encode properly to SJIS: '{text}'")
+                print(f"Encoded result: '{decoded_check}'")
+
             return encoded + b'\x00'
+
         except Exception as e:
             print(f"Warning: SJIS encode error for '{text}': {e}")
             return b'\x00'
