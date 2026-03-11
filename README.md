@@ -7,9 +7,9 @@ Decompiler/compiler tools for `._dt` files from **Trails from Zero** and **Trail
 - **`dt_books.py`** - Book/story files
 - **`dt_ittxt.py`** - Item files
 - **`dt_town.py`** - Town file
-- **`dt\\\_dt_fish.py`** - Fish names and fishing dialogues (Azure only)
-- **`dt\\\_dt_name.py`** - Main character names
-- **`dt\\\_dt_quest.py`** - Detective Notebook entries
+- **`dt_dt_fish.py`** - Fish names and fishing dialogues (Azure only)
+- **`dt_dt_name.py`** - Main character names
+- **`dt_dt_quest.py`** - Detective Notebook entries
 
 ## Usage
 
